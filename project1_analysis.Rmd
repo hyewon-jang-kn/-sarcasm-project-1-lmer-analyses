@@ -1,0 +1,564 @@
+---
+title: "project 1 analysis"
+author: "Hyewon Jang"
+date: '2022-09-23'
+output: html_document
+---
+
+```{r}
+library(lmerTest)
+library(report)
+library(ggplot2)
+library(dplyr)
+library(car)
+library(sjPlot)
+library(effects)
+library(jtools)
+library(gridExtra)
+library(ggeffects)
+library(gridExtra)
+
+```
+
+
+```{r}
+gen_file = "generation_results_clean.csv"
+data = read.csv(gen_file)
+data$context_type <- as.factor(data$context_type)
+data$stimuli_presented <- as.factor(data$stimuli_presented)
+data$participant_id <- as.factor(data$participant_id)
+data$gender  <- as.factor(data$gender)
+data$edu <- as.factor(data$edu)
+data[is.na(data)] <- 0
+
+data %>% select(z_sarc, gender, edu, generally_sarcastic, context_type, z_silly_or_annoying, int1_crit_harsher, int2_crit_softer, int3_mock_hilarious, int4_mock_friendly, int5_natural, int6_direct, int7_be_nice, int8_clever, stimuli_presented, participant_id) -> data
+
+summary(data)
+```
+
+```{r}
+gen_file = "generation_results_clean.csv"
+data = read.csv(gen_file)
+
+data$context_type <- as.factor(data$context_type)
+data$stimuli_presented <- as.factor(data$stimuli_presented)
+data$participant_id <- as.factor(data$participant_id)
+data$gender  <- as.factor(data$gender)
+data$edu <- as.factor(data$edu)
+data[is.na(data)] <- 0
+
+data %>% select(z_sarc, gender, edu, generally_sarcastic, context_type, z_silly_or_annoying, int1_crit_harsher, int2_crit_softer, int3_mock_hilarious, int4_mock_friendly, int5_natural, int6_direct, int7_be_nice, int8_clever, stimuli_presented, participant_id) -> data
+
+data$int1_crit_harsher <- as.factor(data$int1_crit_harsher)
+data$int2_crit_softer <- as.factor(data$int2_crit_softer)
+data$int3_mock_hilarious <- as.factor(data$int3_mock_hilarious)
+data$int4_mock_friendly <- as.factor(data$int4_mock_friendly)
+data$int5_natural <- as.factor(data$int5_natural)
+data$int6_direct <- as.factor(data$int6_direct)
+data$int7_be_nice <- as.factor(data$int7_be_nice)
+data$int8_clever <- as.factor(data$int8_clever)
+
+summary(data)
+
+```
+
+
+
+```{r}
+# functions to address potential collinearity issues
+# source: https://hlplab.wordpress.com/2011/02/24/diagnosing-collinearity-in-lme4/
+
+c. <- function (x) scale(x, scale = FALSE)
+z. <- function (x) scale(x)
+r. <- function (formula, ...) rstandard(lm(formula, ...))
+l. <- function (x) log(x)
+s. <- function (x) {
+    ## Seber 1977 page 216, from http://dx.doi.org/10.1021/ie970236k
+    ## Transforms continuous variable to the range [-1, 1]
+    ## In linked paper, recommended before computing orthogonal
+    ## polynomials
+    (2 * x - max(x) - min(x)) / (max(x) - min(x))
+}
+p. <- function (x, ...) poly(x, ...)
+
+
+vif.mer <- function (fit) {
+    ## adapted from rms::vif
+    
+    v <- vcov(fit)
+    nam <- names(fixef(fit))
+
+    ## exclude intercepts
+    ns <- sum(1 * (nam == "Intercept" | nam == "(Intercept)"))
+    if (ns > 0) {
+        v <- v[-(1:ns), -(1:ns), drop = FALSE]
+        nam <- nam[-(1:ns)]
+    }
+    
+    d <- diag(v)^0.5
+    v <- diag(solve(v/(d %o% d)))
+    names(v) <- nam
+    v
+}
+
+kappa.mer <- function (fit,
+                       scale = TRUE, center = FALSE,
+                       add.intercept = TRUE,
+                       exact = FALSE) {
+    X <- fit@pp$X
+    nam <- names(fixef(fit))
+    
+    ## exclude intercepts
+    nrp <- sum(1 * (nam == "(Intercept)"))
+    if (nrp > 0) {
+        X <- X[, -(1:nrp), drop = FALSE]
+        nam <- nam[-(1:nrp)]
+    }
+
+    if (add.intercept) {
+        X <- cbind(rep(1), scale(X, scale = scale, center = center))
+        kappa(X, exact = exact)
+    } else {
+        kappa(scale(X, scale = scale, center = scale), exact = exact)
+    }
+}
+
+colldiag.mer <- function (fit,
+                          scale = TRUE, center = FALSE,
+                          add.intercept = TRUE) {
+    ## adapted from perturb::colldiag, method in Belsley, Kuh, and
+    ## Welsch (1980).  look for a high condition index (> 30) with
+    ## more than one high variance propotion.  see ?colldiag for more
+    ## tips.
+    result <- NULL
+    if (center) 
+        add.intercept <- FALSE
+    if (is.matrix(fit) || is.data.frame(fit)) {
+        X <- as.matrix(fit)
+        nms <- colnames(fit)
+    }
+    else if (class(fit) == "mer") {
+        nms <- names(fixef(fit))
+        X <- fit@X
+        if (any(grepl("(Intercept)", nms))) {
+            add.intercept <- FALSE
+        }
+    }
+    X <- X[!is.na(apply(X, 1, all)), ]
+
+    if (add.intercept) {
+        X <- cbind(1, X)
+        colnames(X)[1] <- "(Intercept)"
+    }
+    X <- scale(X, scale = scale, center = center)
+
+    svdX <- svd(X)
+    svdX$d
+    condindx <- max(svdX$d)/svdX$d
+    dim(condindx) <- c(length(condindx), 1)
+
+    Phi = svdX$v %*% diag(1/svdX$d)
+    Phi <- t(Phi^2)
+    pi <- prop.table(Phi, 2)
+    colnames(condindx) <- "cond.index"
+    if (!is.null(nms)) {
+        rownames(condindx) <- nms
+        colnames(pi) <- nms
+        rownames(pi) <- nms
+    } else {
+        rownames(condindx) <- 1:length(condindx)
+        colnames(pi) <- 1:ncol(pi)
+        rownames(pi) <- 1:nrow(pi)
+    }         
+
+    result <- data.frame(cbind(condindx, pi))
+    zapsmall(result)
+}
+
+maxcorr.mer <- function (fit,
+                         exclude.intercept = TRUE) {
+    so <- summary(fit)
+    corF <- so@vcov@factors$correlation
+    nam <- names(fixef(fit))
+
+    ## exclude intercepts
+    ns <- sum(1 * (nam == "Intercept" | nam == "(Intercept)"))
+    if (ns > 0 & exclude.intercept) {
+        corF <- corF[-(1:ns), -(1:ns), drop = FALSE]
+        nam <- nam[-(1:ns)]
+    }
+    corF[!lower.tri(corF)] <- 0
+    maxCor <- max(corF)
+    minCor <- min(corF)
+    if (abs(maxCor) > abs(minCor)) {
+        zapsmall(maxCor)
+    } else {
+        zapsmall(minCor)
+    }
+}
+
+
+```
+
+```{r}
+model <- lmer(z_sarc ~ gender + edu  + generally_sarcastic + z_silly_or_annoying*(int1_crit_harsher + int2_crit_softer + int3_mock_hilarious + int4_mock_friendly + int5_natural + int6_direct + int7_be_nice + int8_clever) + (0+z_silly_or_annoying|participant_id) + (1|stimuli_presented), data=data)
+
+print(summary(model))
+kappa.mer(model)
+vif(model)
+
+plot_model(model)
+tab_model(model, show.re.var= TRUE)
+```
+
+```{r}
+
+eff <- effect("z_silly_or_annoying*int1_crit_harsher", model, KR=F)
+eff <- as.data.frame(eff)
+
+interact <- effect("z_silly_or_annoying*int1_crit_harsher", model)
+interact <- as.data.frame(interact)
+
+interact %>% ggplot(aes(z_silly_or_annoying, color = (int1_crit_harsher))) +
+  geom_line(aes(y =fit, group=(int1_crit_harsher)), size=1.2) +
+    theme_nice() +theme(legend.position = c(0.2, 0.8)) +
+  labs(colour = "criticize harsher") +
+  labs(x ="silly or annoying", y = "coefficient") -> p0
+
+
+eff <- effect("z_silly_or_annoying*int2_crit_softer", model, KR=F)
+eff <- as.data.frame(eff)
+
+interact <- effect("z_silly_or_annoying*int2_crit_softer", model)
+interact <- as.data.frame(interact)
+
+interact %>% ggplot(aes(z_silly_or_annoying, color = (int2_crit_softer))) +
+  geom_line(aes(y =fit, group=(int2_crit_softer)), size=1.2) +
+    theme_nice() +theme(legend.position = c(0.2, 0.8)) +
+  labs(colour = "criticize softer") +
+  labs(x ="silly or annoying", y = "coefficient")-> p1
+
+
+eff <- effect("z_silly_or_annoying*int6_direct", model, KR=F)
+eff <- as.data.frame(eff)
+
+interact <- effect("z_silly_or_annoying*int6_direct", model)
+interact <- as.data.frame(interact)
+
+interact %>% ggplot(aes(z_silly_or_annoying, color = (int6_direct))) +
+  geom_line(aes(y =fit, group=(int6_direct)), size=1.2) +
+    theme_nice() +theme(legend.position = c(0.2, 0.8)) +
+  labs(colour = "be direct") +
+  labs(x ="silly or annoying", y="")-> p2
+
+
+eff <- effect("z_silly_or_annoying*int8_clever", model, KR=F)
+eff <- as.data.frame(eff)
+
+interact <- effect("z_silly_or_annoying*int8_clever", model)
+interact <- as.data.frame(interact)
+
+interact %>% ggplot(aes(z_silly_or_annoying, color = (int8_clever))) +
+  geom_line(aes(y =fit, group=(int8_clever)), size=1.2) +
+    theme_nice() +theme(legend.position = c(0.2, 0.8)) +
+  labs(colour = "be clever") +
+  labs(x ="silly or annoying", y="")-> p3
+
+library(gridExtra)
+grid.arrange(p1, p2, p3, nrow = 1) -> pp
+pp
+ggsave("interaction_silly_intentions.pdf", pp)
+```
+
+
+
+
+
+# separate lmer - perception
+
+```{r}
+per_file = "perception_results_clean_z.csv"
+data = read.csv(per_file)
+data%>% filter(stimuli_presented != "example") -> data
+
+data$context_type <- as.factor(data$context_type)
+data$stimuli_presented <- as.factor(data$stimuli_presented)
+data$participant_id <- as.factor(data$participant_id)
+data$gender  <- as.factor(data$gender)
+data$edu <- as.factor(data$edu)
+data$name <- as.factor(data$name)
+
+data %>% select(z_sarc, name, gender, edu, generally_sarcastic, context_type, z_silly_or_annoying, int1_crit_harsher, int2_crit_softer, int3_mock_hilarious, int4_mock_friendly, int5_natural, int6_direct, int7_be_nice, int8_clever, stimuli_presented, participant_id, group_id) -> data
+
+data$int1_crit_harsher <- as.factor(data$int1_crit_harsher)
+data$int2_crit_softer <- as.factor(data$int2_crit_softer)
+data$int3_mock_hilarious <- as.factor(data$int3_mock_hilarious)
+data$int4_mock_friendly <- as.factor(data$int4_mock_friendly)
+data$int5_natural <- as.factor(data$int5_natural)
+data$int6_direct <- as.factor(data$int6_direct)
+data$int7_be_nice <- as.factor(data$int7_be_nice)
+data$int8_clever <- as.factor(data$int8_clever)
+
+summary(data)
+```
+
+
+
+
+```{r}
+
+model <- lmer(z_sarc ~  gender + edu+generally_sarcastic + z_silly_or_annoying*(int1_crit_harsher + int2_crit_softer + int3_mock_hilarious + int4_mock_friendly + int5_natural + int6_direct + int7_be_nice + int8_clever) + (1|stimuli_presented) + (0+z_silly_or_annoying|group_id:participant_id), data=data)
+
+print(summary(model))
+kappa.mer(model)
+vif(model)
+
+plot_model(model, show.intercept = T, show.values = F, auto.label = F, show.p = TRUE, title = "model", axis.title = "beta", wrap.title = 50, wrap.labels = 10,
+  colors = "Set1")
+
+
+```
+
+
+```{r}
+#lmer on merged data (generation + perception)
+data <- read.csv("merged_vstacked.csv")
+
+
+data$context_type <- as.factor(data$context_type)
+data$stimuli_presented <- as.factor(data$stimuli_presented)
+data$experiment <- as.factor(data$experiment)
+data$interlocutor_id <- as.factor(data$interlocutor_id)
+
+# data %>% select(-sarc_def1, -sarc_def2, -sarc_def3, -sarc_def4, -sarc_def5, -generally_sarcastic) -> data
+
+data[is.na(data)] <- 0
+data$experiment_coded <- as.factor(ifelse(data$experiment =="generation", -0.5, 0.5))
+print(table(data$experiment))
+print(table(data$experiment_coded))
+
+summary(data)
+
+```
+
+```{r}
+# lmer model interacting with 'experiment'
+
+model <- lmer(z_sarc ~ experiment*(z_silly_or_annoying+int1_crit_harsher +int2_crit_softer +
+                                     int3_mock_hilarious + int4_mock_friendly +
+                                 int5_natural +int6_direct + int7_be_nice +int8_clever)
+              + (1|stimuli_presented) + (1|experiment:interlocutor_id), data=data)
+
+
+print(summary(model))
+vif(model)
+
+tab_model(model, show.re.var= TRUE)
+```
+
+```{r}
+#lmer model interacting with 'experiment' and 'context perception' -- no 3-way interaction; so we drop it.
+
+model_2 <- lmer(z_sarc ~ experiment*z_silly_or_annoying*(int1_crit_harsher +int2_crit_softer +
+                                     int3_mock_hilarious + int4_mock_friendly +
+                                 int5_natural +int6_direct + int7_be_nice +int8_clever)
+              + (1|stimuli_presented) + (1|experiment:interlocutor_id), data=data)
+
+print(summary(model_2))
+```
+
+
+
+```{r}
+#plot the model
+
+# 
+# interact <- effect("experiment*z_silly_or_annoying", model)
+# interact <- as.data.frame(interact)
+# 
+# interact %>% ggplot(aes(z_silly_or_annoying, linetype=factor(experiment),
+#                                      color = factor(experiment))) +
+#   geom_line(aes(y =fit, group=factor(experiment)), size=1.2) +
+#   scale_colour_discrete("") +
+#   scale_linetype_discrete("") +
+#   ylim(-0.3, 0.3)+
+#   theme_nice()+
+#   # labs(color='experiment')+
+#   labs(x ="silly or annoying", y = "")+
+#   theme(legend.position = 'top')-> p0
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+interact <- effect("experiment*int1_crit_harsher", model)
+interact <- as.data.frame(interact)
+
+interact %>% ggplot(aes(int1_crit_harsher, linetype=factor(experiment),
+                                     color = factor(experiment))) +
+  geom_line(aes(y =fit, group=factor(experiment)), size=1.2) +
+  scale_colour_discrete("") +
+  scale_linetype_discrete("") +
+    xlim(0,1)+
+  ylim(-0.25, 0.25)+
+  theme_nice()+
+  # labs(color='experiment')+
+  labs(x ="criticize harsher", y = "") -> p1
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+interact <- effect("experiment*int2_crit_softer", model)
+interact <- as.data.frame(interact)
+
+interact %>% ggplot(aes(int2_crit_softer, linetype=factor(experiment),
+                                     color = factor(experiment))) +
+  geom_line(aes(y =fit, group=factor(experiment)), size=1.2) +
+  scale_colour_discrete("") +
+  scale_linetype_discrete("") +
+    xlim(0,1)+
+  ylim(-0.25, 0.25)+
+  theme_nice()+
+  # labs(color='experiment')+
+  labs(x ="criticize softer*", y = "")-> p2
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+interact <- effect("experiment*int3_mock_hilarious", model)
+interact <- as.data.frame(interact)
+
+interact %>% ggplot(aes(int3_mock_hilarious, linetype=factor(experiment),
+                                     color = factor(experiment))) +
+  geom_line(aes(y =fit, group=factor(experiment)), size=1.2) +
+  scale_colour_discrete("") +
+  scale_linetype_discrete("") +
+    xlim(0,1)+
+  ylim(-0.25, 0.25)+
+  theme_nice()+
+  # labs(color='experiment')+
+  labs(x ="mock hilariously", y = "")-> p3
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+interact <- effect("experiment*int4_mock_friendly", model)
+interact <- as.data.frame(interact)
+
+interact %>% ggplot(aes(int4_mock_friendly, linetype=factor(experiment),
+                                     color = factor(experiment))) +
+  geom_line(aes(y =fit, group=factor(experiment)), size=1.2) +
+  scale_colour_discrete("") +
+  scale_linetype_discrete("") +
+    xlim(0,1)+
+  ylim(-0.25, 0.25)+
+  theme_nice()+
+  # labs(color='experiment')+
+  labs(x ="mock friendly", y = "") -> p4
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+interact <- effect("experiment*int5_natural", model)
+interact <- as.data.frame(interact)
+
+interact %>% ggplot(aes(int5_natural, linetype=factor(experiment),
+                                     color = factor(experiment))) +
+  geom_line(aes(y =fit, group=factor(experiment)), size=1.2) +
+  scale_colour_discrete("") +
+  scale_linetype_discrete("") +
+    xlim(0,1)+
+  ylim(-0.25, 0.25)+
+  theme_nice()+
+  # labs(color='experiment')+
+  labs(x ="be natural", y = "") -> p5
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+interact <- effect("experiment*int6_direct", model)
+interact <- as.data.frame(interact)
+
+interact %>% ggplot(aes(int6_direct, linetype=factor(experiment),
+                                     color = factor(experiment))) +
+  geom_line(aes(y =fit, group=factor(experiment)), size=1.2) +
+  scale_colour_discrete("") +
+  scale_linetype_discrete("") +
+    xlim(0,1)+
+  ylim(-0.25, 0.25)+
+  theme_nice()+
+  # labs(color='experiment')+
+  labs(x ="be direct*", y = "") -> p6
+
+
+p6
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+interact <- effect("experiment*int7_be_nice", model)
+interact <- as.data.frame(interact)
+
+interact %>% ggplot(aes(int7_be_nice, linetype=factor(experiment),
+                                     color = factor(experiment))) +
+  geom_line(aes(y =fit, group=factor(experiment)), size=1.2) +
+  xlim(0,1)+
+  ylim(-0.25, 0.25)+
+  scale_colour_discrete("") +
+  scale_linetype_discrete("") +
+  theme_nice()+
+  # labs(color='experiment')+
+  labs(x ="be nice", y = "") -> p7
+
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+interact <- effect("experiment*int8_clever", model)
+interact <- as.data.frame(interact)
+
+interact %>% ggplot(aes(int8_clever, linetype=factor(experiment),
+                                     color = factor(experiment))) +
+  geom_line(aes(y =fit, group=factor(experiment)), size=1.2) +
+  scale_colour_discrete("") +
+  scale_linetype_discrete("") +
+    xlim(0,1)+
+  ylim(-0.25, 0.25)+
+  theme_nice()+
+  # labs(color='experiment')+
+  labs(x ="be clever*", y = "")+
+  theme(legend.position = 'top')-> p8
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+library(ggpubr)
+ggarrange(p1, p2, p3, p4, p5, p6, p7, p8, nrow=2, ncol=4, common.legend = TRUE, legend="bottom") ->pp
+require(grid)
+annotate_figure(pp, left = textGrob("Lmer coefficients for sarcasm ratings", rot = 90, vjust = 1, gp = gpar(cex = 1.2))) -> pp
+
+pp
+
+ggsave("THEPLOT.pdf", pp, width = 8, height = 6)
+ggsave("THEPLOT.png", pp, width = 8, height= 6)
+
+```
+
+
+```{r}
+agreement = read.csv('perception_results_clean_z.csv')
+```
+
+```{r}
+# plot sarcasm ratings for each stimulus by each rater (N = 6)
+for (x in 1:3) {
+  groupid = sprintf("Group%s", x)
+agreement %>% filter(stimuli_presented!= "example" & group_id==groupid)%>%
+  mutate(part_code = substr(participant_id, 1, 2))%>%
+  ggplot(aes(x=part_code, y=sarc))+
+  geom_point()+
+  facet_wrap(~stimuli_presented)+
+  labs(title="sarcasm ratings by 6 raters to each stimulus", x="participant", y="sarcasm ratings") -> plot
+
+  ggsave(sprintf("perception_ratings_group%s.pdf", x), plot, width=8, height=7)
+
+}
+
+```
+
+
+
+
