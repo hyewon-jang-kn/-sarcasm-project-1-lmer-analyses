@@ -1,11 +1,11 @@
-# -sarcasm-project-1-lmer-analyses
+# sarcasm-project-1-lmer-analyses
 lmer analyses from sarcasm project 1
 
 [descriptions]
 
 This repository contains code for lmer analysis conducted on sarcasm data collected via experiments with human participants. 
 In the first experiment, participants (N = 60) responded freely to 32 stimuli and rated their own responses in terms of their sarcasm levels. 
-In the second experiment, new participants (N = 360; nested design) rated the responses by the previous participants in terms of their sarcasm levels.
+In the second experiment, new participants (N = 360; nested design) rated the responses by the previous participants in terms of their sarcasm levels. The lmer analyses predict the sarcasm ratings based on various independent variables (i.e., intentions 1 - 8, context perception, general sarcasm use, and demographic information).
 
 
 [files]
