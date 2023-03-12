@@ -20,22 +20,7 @@ library(gridExtra)
 
 ```
 
-
-```{r}
-gen_file = "generation_results_clean.csv"
-data = read.csv(gen_file)
-data$context_type <- as.factor(data$context_type)
-data$stimuli_presented <- as.factor(data$stimuli_presented)
-data$participant_id <- as.factor(data$participant_id)
-data$gender  <- as.factor(data$gender)
-data$edu <- as.factor(data$edu)
-data[is.na(data)] <- 0
-
-data %>% select(z_sarc, gender, edu, generally_sarcastic, context_type, z_silly_or_annoying, int1_crit_harsher, int2_crit_softer, int3_mock_hilarious, int4_mock_friendly, int5_natural, int6_direct, int7_be_nice, int8_clever, stimuli_presented, participant_id) -> data
-
-summary(data)
-```
-
+## load file (from the generation experiment)
 ```{r}
 gen_file = "generation_results_clean.csv"
 data = read.csv(gen_file)
@@ -200,6 +185,7 @@ maxcorr.mer <- function (fit,
 
 ```
 
+## lmer on the generation data
 ```{r}
 model <- lmer(z_sarc ~ gender + edu  + generally_sarcastic + z_silly_or_annoying*(int1_crit_harsher + int2_crit_softer + int3_mock_hilarious + int4_mock_friendly + int5_natural + int6_direct + int7_be_nice + int8_clever) + (0+z_silly_or_annoying|participant_id) + (1|stimuli_presented), data=data)
 
@@ -211,71 +197,7 @@ plot_model(model)
 tab_model(model, show.re.var= TRUE)
 ```
 
-```{r}
-
-eff <- effect("z_silly_or_annoying*int1_crit_harsher", model, KR=F)
-eff <- as.data.frame(eff)
-
-interact <- effect("z_silly_or_annoying*int1_crit_harsher", model)
-interact <- as.data.frame(interact)
-
-interact %>% ggplot(aes(z_silly_or_annoying, color = (int1_crit_harsher))) +
-  geom_line(aes(y =fit, group=(int1_crit_harsher)), size=1.2) +
-    theme_nice() +theme(legend.position = c(0.2, 0.8)) +
-  labs(colour = "criticize harsher") +
-  labs(x ="silly or annoying", y = "coefficient") -> p0
-
-
-eff <- effect("z_silly_or_annoying*int2_crit_softer", model, KR=F)
-eff <- as.data.frame(eff)
-
-interact <- effect("z_silly_or_annoying*int2_crit_softer", model)
-interact <- as.data.frame(interact)
-
-interact %>% ggplot(aes(z_silly_or_annoying, color = (int2_crit_softer))) +
-  geom_line(aes(y =fit, group=(int2_crit_softer)), size=1.2) +
-    theme_nice() +theme(legend.position = c(0.2, 0.8)) +
-  labs(colour = "criticize softer") +
-  labs(x ="silly or annoying", y = "coefficient")-> p1
-
-
-eff <- effect("z_silly_or_annoying*int6_direct", model, KR=F)
-eff <- as.data.frame(eff)
-
-interact <- effect("z_silly_or_annoying*int6_direct", model)
-interact <- as.data.frame(interact)
-
-interact %>% ggplot(aes(z_silly_or_annoying, color = (int6_direct))) +
-  geom_line(aes(y =fit, group=(int6_direct)), size=1.2) +
-    theme_nice() +theme(legend.position = c(0.2, 0.8)) +
-  labs(colour = "be direct") +
-  labs(x ="silly or annoying", y="")-> p2
-
-
-eff <- effect("z_silly_or_annoying*int8_clever", model, KR=F)
-eff <- as.data.frame(eff)
-
-interact <- effect("z_silly_or_annoying*int8_clever", model)
-interact <- as.data.frame(interact)
-
-interact %>% ggplot(aes(z_silly_or_annoying, color = (int8_clever))) +
-  geom_line(aes(y =fit, group=(int8_clever)), size=1.2) +
-    theme_nice() +theme(legend.position = c(0.2, 0.8)) +
-  labs(colour = "be clever") +
-  labs(x ="silly or annoying", y="")-> p3
-
-library(gridExtra)
-grid.arrange(p1, p2, p3, nrow = 1) -> pp
-pp
-ggsave("interaction_silly_intentions.pdf", pp)
-```
-
-
-
-
-
-# separate lmer - perception
-
+## load data from the perception experiment
 ```{r}
 per_file = "perception_results_clean_z.csv"
 data = read.csv(per_file)
@@ -286,9 +208,8 @@ data$stimuli_presented <- as.factor(data$stimuli_presented)
 data$participant_id <- as.factor(data$participant_id)
 data$gender  <- as.factor(data$gender)
 data$edu <- as.factor(data$edu)
-data$name <- as.factor(data$name)
 
-data %>% select(z_sarc, name, gender, edu, generally_sarcastic, context_type, z_silly_or_annoying, int1_crit_harsher, int2_crit_softer, int3_mock_hilarious, int4_mock_friendly, int5_natural, int6_direct, int7_be_nice, int8_clever, stimuli_presented, participant_id, group_id) -> data
+data %>% select(z_sarc, gender, edu, generally_sarcastic, context_type, z_silly_or_annoying, int1_crit_harsher, int2_crit_softer, int3_mock_hilarious, int4_mock_friendly, int5_natural, int6_direct, int7_be_nice, int8_clever, stimuli_presented, participant_id, group_id) -> data
 
 data$int1_crit_harsher <- as.factor(data$int1_crit_harsher)
 data$int2_crit_softer <- as.factor(data$int2_crit_softer)
@@ -302,9 +223,7 @@ data$int8_clever <- as.factor(data$int8_clever)
 summary(data)
 ```
 
-
-
-
+## lmer on the perception data
 ```{r}
 
 model <- lmer(z_sarc ~  gender + edu+generally_sarcastic + z_silly_or_annoying*(int1_crit_harsher + int2_crit_softer + int3_mock_hilarious + int4_mock_friendly + int5_natural + int6_direct + int7_be_nice + int8_clever) + (1|stimuli_presented) + (0+z_silly_or_annoying|group_id:participant_id), data=data)
@@ -319,11 +238,9 @@ plot_model(model, show.intercept = T, show.values = F, auto.label = F, show.p = 
 
 ```
 
-
+## load the merged data
 ```{r}
-#lmer on merged data (generation + perception)
 data <- read.csv("merged_vstacked.csv")
-
 
 data$context_type <- as.factor(data$context_type)
 data$stimuli_presented <- as.factor(data$stimuli_presented)
@@ -341,6 +258,7 @@ summary(data)
 
 ```
 
+## lmer on the merged data (generation + perception)
 ```{r}
 # lmer model interacting with 'experiment'
 
@@ -368,9 +286,8 @@ print(summary(model_2))
 ```
 
 
-
+## plot the interactions between the intentions and source experiment
 ```{r}
-#plot the model
 
 # 
 # interact <- effect("experiment*z_silly_or_annoying", model)
@@ -486,8 +403,6 @@ interact %>% ggplot(aes(int6_direct, linetype=factor(experiment),
   # labs(color='experiment')+
   labs(x ="be direct*", y = "") -> p6
 
-
-p6
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 interact <- effect("experiment*int7_be_nice", model)
@@ -537,7 +452,7 @@ ggsave("THEPLOT.png", pp, width = 8, height= 6)
 
 ```
 
-
+## look into all the ratings by each rater 
 ```{r}
 agreement = read.csv('perception_results_clean_z.csv')
 ```
@@ -551,8 +466,8 @@ agreement %>% filter(stimuli_presented!= "example" & group_id==groupid)%>%
   ggplot(aes(x=part_code, y=sarc))+
   geom_point()+
   facet_wrap(~stimuli_presented)+
-  labs(title="sarcasm ratings by 6 raters to each stimulus", x="participant", y="sarcasm ratings") -> plot
-
+  labs(title=sprintf("sarcasm ratings by 6 raters to each stimulus-Group%s", x), x="participant", y="sarcasm ratings") -> plot
+  print(plot)
   ggsave(sprintf("perception_ratings_group%s.pdf", x), plot, width=8, height=7)
 
 }
